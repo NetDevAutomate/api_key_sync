@@ -1,4 +1,5 @@
 import subprocess
+import getpass
 from ..models import APIKey
 
 
@@ -6,10 +7,39 @@ class KeychainStore:
     def __init__(self, service: str = "api-keys"):
         self.service = service
 
-    def _run(self, args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    def _run(self, args: list[str], check: bool = True, input: str | None = None) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["security"] + args, capture_output=True, text=True, check=check
+            ["security"] + args, capture_output=True, text=True, check=check, input=input
         )
+
+    def unlock(self, password: str | None = None) -> bool:
+        """Unlock the login keychain.
+
+        Args:
+            password: Keychain password. If None, prompts interactively.
+
+        Returns:
+            True if unlock succeeded, False otherwise.
+        """
+        if password is None:
+            password = getpass.getpass("Keychain password: ")
+
+        try:
+            self._run(
+                ["unlock-keychain", "-p", password, "login.keychain-db"],
+                check=True
+            )
+            return True
+        except subprocess.CalledProcessError:
+            return False
+
+    def is_locked(self) -> bool:
+        """Check if the keychain requires unlock for operations."""
+        try:
+            self._run(["show-keychain-info"], check=True)
+            return False
+        except subprocess.CalledProcessError:
+            return True
 
     def get(self, name: str) -> str | None:
         try:

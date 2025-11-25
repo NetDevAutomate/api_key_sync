@@ -20,6 +20,9 @@ def sync(
     sync_deletions: Annotated[
         bool, typer.Option("--sync-deletions", help="Delete missing keys")
     ] = False,
+    unlock: Annotated[
+        bool, typer.Option("--unlock", help="Prompt to unlock keychain before sync")
+    ] = False,
     vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service name")] = "api-keys",
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
@@ -28,6 +31,16 @@ def sync(
     key_names = load_key_list(config)
     op_store = OnePasswordStore(vault)
     kc_store = KeychainStore(service)
+
+    if unlock:
+        if kc_store.is_locked():
+            typer.echo("Keychain is locked. Unlocking...")
+            if not kc_store.unlock():
+                typer.echo("Failed to unlock keychain", err=True)
+                raise typer.Exit(1)
+            typer.echo("Keychain unlocked successfully")
+        else:
+            typer.echo("Keychain is already unlocked")
 
     if direction == SyncDirection.OP_TO_KEYCHAIN:
         engine = SyncEngine(op_store, kc_store, key_names)
@@ -75,6 +88,9 @@ def put(
     name: Annotated[str, typer.Argument(help="Key name")],
     value: Annotated[str, typer.Argument(help="Key value")],
     target: Annotated[str, typer.Option(help="Target: op, keychain, or both")] = "both",
+    unlock: Annotated[
+        bool, typer.Option("--unlock", help="Prompt to unlock keychain before storing")
+    ] = False,
     vault: Annotated[str, typer.Option(help="1Password vault")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service")] = "api-keys",
 ):
@@ -82,6 +98,15 @@ def put(
     from .models import APIKey
 
     key = APIKey(name, value)
+    kc_store = KeychainStore(service)
+
+    if unlock and target in ("keychain", "both"):
+        if kc_store.is_locked():
+            typer.echo("Keychain is locked. Unlocking...")
+            if not kc_store.unlock():
+                typer.echo("Failed to unlock keychain", err=True)
+                raise typer.Exit(1)
+            typer.echo("Keychain unlocked successfully")
 
     if target in ("op", "both"):
         if OnePasswordStore(vault).put(key):
@@ -90,7 +115,7 @@ def put(
             typer.echo(f"✗ Failed to store in 1Password: {name}", err=True)
 
     if target in ("keychain", "both"):
-        if KeychainStore(service).put(key):
+        if kc_store.put(key):
             typer.echo(f"✓ Stored in Keychain: {name}")
         else:
             typer.echo(f"✗ Failed to store in Keychain: {name}", err=True)
