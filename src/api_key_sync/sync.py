@@ -21,17 +21,17 @@ class SyncEngine:
         self.source = source
         self.target = target
         self.key_names = key_names
-    
+
     def sync(self, dry_run: bool = False, sync_deletions: bool = False) -> SyncResult:
         result = SyncResult(synced=[], deleted=[], skipped=[], errors=[])
-        
+
         source_keys = self.source.list_keys(self.key_names)
         target_keys = self.target.list_keys(self.key_names)
-        
+
         for name in self.key_names:
             src_val = source_keys.get(name)
             tgt_val = target_keys.get(name)
-            
+
             if src_val:
                 if src_val != tgt_val:
                     if not dry_run:
@@ -51,5 +51,5 @@ class SyncEngine:
                         result.errors.append(name)
                 else:
                     result.deleted.append(name)
-        
+
         return result
