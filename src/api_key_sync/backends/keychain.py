@@ -7,9 +7,15 @@ class KeychainStore:
     def __init__(self, service: str = "api-keys"):
         self.service = service
 
-    def _run(self, args: list[str], check: bool = True, input: str | None = None) -> subprocess.CompletedProcess:
+    def _run(
+        self, args: list[str], check: bool = True, input: str | None = None
+    ) -> subprocess.CompletedProcess:
         return subprocess.run(
-            ["security"] + args, capture_output=True, text=True, check=check, input=input
+            ["security"] + args,
+            capture_output=True,
+            text=True,
+            check=check,
+            input=input,
         )
 
     def unlock(self, password: str | None = None) -> bool:
@@ -26,8 +32,7 @@ class KeychainStore:
 
         try:
             self._run(
-                ["unlock-keychain", "-p", password, "login.keychain-db"],
-                check=True
+                ["unlock-keychain", "-p", password, "login.keychain-db"], check=True
             )
             return True
         except subprocess.CalledProcessError:
