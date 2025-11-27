@@ -32,15 +32,10 @@ def sync(
     op_store = OnePasswordStore(vault)
     kc_store = KeychainStore(service)
 
-    if unlock:
-        if kc_store.is_locked():
-            typer.echo("Keychain is locked. Unlocking...")
-            if not kc_store.unlock():
-                typer.echo("Failed to unlock keychain", err=True)
-                raise typer.Exit(1)
-            typer.echo("Keychain unlocked successfully")
-        else:
-            typer.echo("Keychain is already unlocked")
+    if unlock or kc_store.is_locked():
+        if not kc_store.unlock():
+            typer.echo("Failed to unlock keychain", err=True)
+            raise typer.Exit(1)
 
     if direction == SyncDirection.OP_TO_KEYCHAIN:
         engine = SyncEngine(op_store, kc_store, key_names)

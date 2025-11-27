@@ -39,9 +39,14 @@ class KeychainStore:
             return False
 
     def is_locked(self) -> bool:
-        """Check if the keychain requires unlock for operations."""
+        """Check if the keychain requires unlock for write operations."""
         try:
-            self._run(["show-keychain-info"], check=True)
+            # Try to add and immediately delete a test key
+            self._run(
+                ["add-generic-password", "-a", "__test__", "-s", self.service, "-w", "test", "-U"],
+                check=True,
+            )
+            self._run(["delete-generic-password", "-a", "__test__", "-s", self.service], check=False)
             return False
         except subprocess.CalledProcessError:
             return True
