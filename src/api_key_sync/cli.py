@@ -153,6 +153,13 @@ def list_keys(
         typer.echo(f"✓ {name}")
 
 
+def _is_valid_shell_var(name: str) -> bool:
+    """Check if name is a valid shell variable name."""
+    import re
+
+    return bool(re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name))
+
+
 @app.command("export-env")
 def export_env(
     case_sensitive: Annotated[
@@ -175,10 +182,15 @@ def export_env(
     )
 
     for name in sorted(matching_names):
+        # Sanitize key name (strip whitespace)
+        clean_name = name.strip()
+        if not _is_valid_shell_var(clean_name):
+            typer.echo(f"# Skipping invalid variable name: {name!r}", err=True)
+            continue
         value = all_keys[name]
         # Escape single quotes in value
         escaped = value.replace("'", "'\"'\"'")
-        typer.echo(f"export {name}='{escaped}'")
+        typer.echo(f"export {clean_name}='{escaped}'")
 
 
 if __name__ == "__main__":
