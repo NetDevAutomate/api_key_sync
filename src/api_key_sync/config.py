@@ -3,35 +3,44 @@ from pathlib import Path
 
 DEFAULT_CONFIG_PATH = Path.home() / ".dotfiles/.config/zsh/config.d/api_keys.zsh"
 
-DEFAULT_KEYS = [
-    "OPENAI_API_KEY",
-    "GITHUB_TOKEN",
-    "VAULT_PASSWORD",
-    "GEMINI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "HF_TOKEN",
-    "SRC_ACCESS_TOKEN",
-    "CODEIUM_API_KEY",
-    "GOOGLE_API_KEY",
-    "AWS_BEARER_TOKEN_BEDROCK",
-    "ZAI_API_KEY",
-    "KIMI_K2_API_KEY",
-    "MOONSHOT_API_KEY",
-    "MINIMAX_API_KEY",
-    "SGAI_API_KEY",
-    "PERPLEXITY_API_KEY",
+# Patterns to match API key names (underscore prefix for better specificity)
+DEFAULT_PATTERNS = [
+    "_TOKEN",
+    "_API",
+    "_KEY",
+    "_PASSWORD",
+    "_SECRET",
+    "_CREDENTIAL",
 ]
 
 
-def load_key_list(config_path: Path | None = None) -> list[str]:
+def matches_key_pattern(
+    name: str, patterns: list[str] | None = None, case_sensitive: bool = True
+) -> bool:
+    """Check if a key name matches any of the configured patterns."""
+    patterns = patterns or DEFAULT_PATTERNS
+    check_name = name if case_sensitive else name.upper()
+    check_patterns = patterns if case_sensitive else [p.upper() for p in patterns]
+    return any(pattern in check_name for pattern in check_patterns)
+
+
+def filter_keys_by_pattern(
+    keys: list[str], patterns: list[str] | None = None, case_sensitive: bool = True
+) -> list[str]:
+    """Filter a list of key names to only those matching configured patterns."""
+    return [k for k in keys if matches_key_pattern(k, patterns, case_sensitive)]
+
+
+def load_patterns(config_path: Path | None = None) -> list[str]:
+    """Load custom patterns from config file, or return defaults."""
     path = config_path or DEFAULT_CONFIG_PATH
     if not path.exists():
-        return DEFAULT_KEYS
+        return DEFAULT_PATTERNS
 
     content = path.read_text()
-    match = re.search(r"API_KEY_LIST=\(([^)]+)\)", content)
+    match = re.search(r"API_KEY_PATTERNS=\(([^)]+)\)", content)
     if not match:
-        return DEFAULT_KEYS
+        return DEFAULT_PATTERNS
 
-    keys = match.group(1).split()
-    return list(dict.fromkeys(keys))  # Dedupe preserving order
+    patterns = match.group(1).split()
+    return list(dict.fromkeys(patterns))  # Dedupe preserving order

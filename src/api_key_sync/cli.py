@@ -4,7 +4,7 @@ from pathlib import Path
 
 from .backends import OnePasswordStore, KeychainStore
 from .sync import SyncEngine, SyncDirection
-from .config import load_key_list
+from .config import load_patterns, filter_keys_by_pattern
 
 app = typer.Typer(help="Sync API keys between 1Password and Apple Keychain")
 
@@ -23,12 +23,22 @@ def sync(
     unlock: Annotated[
         bool, typer.Option("--unlock", help="Prompt to unlock keychain before sync")
     ] = False,
+    case_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--case-sensitive/--no-case-sensitive",
+            help="Case sensitive pattern matching",
+        ),
+    ] = True,
     vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service name")] = "api-keys",
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
 ):
-    """Sync API keys between stores."""
-    key_names = load_key_list(config)
+    """Sync API keys between stores.
+
+    Discovers keys by pattern matching (_TOKEN, _API, _KEY, _PASSWORD, _SECRET, _CREDENTIAL).
+    """
+    patterns = load_patterns(config)
     op_store = OnePasswordStore(vault)
     kc_store = KeychainStore(service)
 
@@ -38,10 +48,10 @@ def sync(
             raise typer.Exit(1)
 
     if direction == SyncDirection.OP_TO_KEYCHAIN:
-        engine = SyncEngine(op_store, kc_store, key_names)
+        engine = SyncEngine(op_store, kc_store, patterns, case_sensitive)
         typer.echo("Syncing: 1Password → Keychain")
     else:
-        engine = SyncEngine(kc_store, op_store, key_names)
+        engine = SyncEngine(kc_store, op_store, patterns, case_sensitive)
         typer.echo("Syncing: Keychain → 1Password")
 
     if dry_run:
@@ -119,35 +129,56 @@ def put(
 @app.command("list")
 def list_keys(
     source: Annotated[str, typer.Option(help="Source: op or keychain")] = "keychain",
+    case_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--case-sensitive/--no-case-sensitive",
+            help="Case sensitive pattern matching",
+        ),
+    ] = True,
     vault: Annotated[str, typer.Option(help="1Password vault")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service")] = "api-keys",
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
 ):
-    """List all configured API keys and their status."""
-    key_names = load_key_list(config)
+    """List all API keys matching configured patterns."""
+    patterns = load_patterns(config)
     store = OnePasswordStore(vault) if source == "op" else KeychainStore(service)
 
-    for name in key_names:
-        value = store.get(name)
-        status = "✓" if value else "✗"
-        typer.echo(f"{status} {name}")
+    all_keys = store.list_all_keys()
+    matching_names = filter_keys_by_pattern(
+        list(all_keys.keys()), patterns, case_sensitive
+    )
+
+    for name in sorted(matching_names):
+        typer.echo(f"✓ {name}")
 
 
 @app.command("export-env")
 def export_env(
+    case_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--case-sensitive/--no-case-sensitive",
+            help="Case sensitive pattern matching",
+        ),
+    ] = True,
     service: Annotated[str, typer.Option(help="Keychain service")] = "api-keys",
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
 ):
     """Output export commands for all keys in Keychain (source in shell)."""
-    key_names = load_key_list(config)
+    patterns = load_patterns(config)
     store = KeychainStore(service)
 
-    for name in key_names:
-        value = store.get(name)
-        if value:
-            # Escape single quotes in value
-            escaped = value.replace("'", "'\"'\"'")
-            typer.echo(f"export {name}='{escaped}'")
+    all_keys = store.list_all_keys()
+    matching_names = filter_keys_by_pattern(
+        list(all_keys.keys()), patterns, case_sensitive
+    )
+
+    for name in sorted(matching_names):
+        value = all_keys[name]
+        # Escape single quotes in value
+        escaped = value.replace("'", "'\"'\"'")
+        typer.echo(f"export {name}='{escaped}'")
 
 
 if __name__ == "__main__":

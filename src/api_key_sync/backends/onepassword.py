@@ -87,20 +87,19 @@ class OnePasswordStore:
         except subprocess.CalledProcessError:
             return False
 
-    def list_keys(self, key_names: list[str]) -> dict[str, str]:
+    def list_all_keys(self) -> dict[str, str]:
+        """List all keys in the vault with their values."""
         try:
             result = self._run(
                 ["item", "list", "--vault", self.vault, "--format", "json"]
             )
             items = json.loads(result.stdout)
-            name_set = set(key_names)
-            matching = [i for i in items if i["title"] in name_set]
 
-            if not matching:
+            if not items:
                 return {}
 
-            # Pipe filtered items to op item get -
-            filtered_json = json.dumps(matching)
+            # Pipe all items to op item get -
+            filtered_json = json.dumps(items)
             result = self._run(
                 [
                     "item",
@@ -141,3 +140,8 @@ class OnePasswordStore:
             return keys
         except (subprocess.CalledProcessError, json.JSONDecodeError):
             return {}
+
+    def list_keys(self, key_names: list[str]) -> dict[str, str]:
+        """List specific keys by name."""
+        all_keys = self.list_all_keys()
+        return {k: v for k, v in all_keys.items() if k in key_names}

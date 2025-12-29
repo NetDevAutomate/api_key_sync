@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from enum import Enum
 from .models import APIKey, KeyStore
+from .config import filter_keys_by_pattern, DEFAULT_PATTERNS
 
 
 class SyncDirection(Enum):
@@ -17,20 +18,39 @@ class SyncResult:
 
 
 class SyncEngine:
-    def __init__(self, source: KeyStore, target: KeyStore, key_names: list[str]):
+    def __init__(
+        self,
+        source: KeyStore,
+        target: KeyStore,
+        patterns: list[str] | None = None,
+        case_sensitive: bool = True,
+    ):
         self.source = source
         self.target = target
-        self.key_names = key_names
+        self.patterns = patterns or DEFAULT_PATTERNS
+        self.case_sensitive = case_sensitive
 
     def sync(self, dry_run: bool = False, sync_deletions: bool = False) -> SyncResult:
         result = SyncResult(synced=[], deleted=[], skipped=[], errors=[])
 
-        source_keys = self.source.list_keys(self.key_names)
-        target_keys = self.target.list_keys(self.key_names)
+        # Discover all keys from both stores
+        all_source_keys = self.source.list_all_keys()
+        all_target_keys = self.target.list_all_keys()
 
-        for name in self.key_names:
-            src_val = source_keys.get(name)
-            tgt_val = target_keys.get(name)
+        # Filter by pattern
+        source_names = filter_keys_by_pattern(
+            list(all_source_keys.keys()), self.patterns, self.case_sensitive
+        )
+        target_names = filter_keys_by_pattern(
+            list(all_target_keys.keys()), self.patterns, self.case_sensitive
+        )
+
+        # Union of all matching key names
+        all_names = set(source_names) | set(target_names)
+
+        for name in sorted(all_names):
+            src_val = all_source_keys.get(name)
+            tgt_val = all_target_keys.get(name)
 
             if src_val:
                 if src_val != tgt_val:
@@ -44,6 +64,7 @@ class SyncEngine:
                 else:
                     result.skipped.append(name)
             elif tgt_val and sync_deletions:
+                # Key exists in target but not in source
                 if not dry_run:
                     if self.target.delete(name):
                         result.deleted.append(name)

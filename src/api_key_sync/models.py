@@ -21,3 +21,6 @@ class KeyStore(Protocol):
 
     @abstractmethod
     def list_keys(self, key_names: list[str]) -> dict[str, str]: ...
+
+    @abstractmethod
+    def list_all_keys(self) -> dict[str, str]: ...
