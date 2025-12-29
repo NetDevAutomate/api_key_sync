@@ -14,9 +14,14 @@ venv/
 .coverage
 htmlcov/
 
+# Linting
+.ruff_cache/
+
 # IDE
 .idea/
 .vscode/
+*.code-workspace
+.zed/
 *.swp
 
 # OS
@@ -35,49 +40,3 @@ CLAUDE.md
 .copilot/
 .speckit/
 .openspec/
-
-# IDE Files
-.vscode/
-.idea/
-*.code-workspace
-.zed/
-
-# Agentic Agent Files
-.claude/
-CLAUDE.md
-.kiro/
-.crush/
-.opencode/
-.cursor/
-.windsurf/
-.continue/
-.aider/
-.copilot/
-.speckit/
-.openspec/
-
-# IDE Files
-.vscode/
-.idea/
-*.code-workspace
-.zed/
-
-# Agentic Agent Files
-.claude/
-CLAUDE.md
-.kiro/
-.crush/
-.opencode/
-.cursor/
-.windsurf/
-.continue/
-.aider/
-.copilot/
-.speckit/
-.openspec/
-
-# IDE Files
-.vscode/
-.idea/
-*.code-workspace
-.zed/
