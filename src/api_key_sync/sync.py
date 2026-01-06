@@ -1,3 +1,4 @@
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from .models import APIKey, KeyStore
@@ -17,6 +18,12 @@ class SyncResult:
     errors: list[str]
 
 
+def _log(msg: str, verbose: bool) -> None:
+    """Print a message to stderr if verbose mode is enabled."""
+    if verbose:
+        print(f"  → {msg}", file=sys.stderr)
+
+
 class SyncEngine:
     def __init__(
         self,
@@ -30,24 +37,34 @@ class SyncEngine:
         self.patterns = patterns or DEFAULT_PATTERNS
         self.case_sensitive = case_sensitive
 
-    def sync(self, dry_run: bool = False, sync_deletions: bool = False) -> SyncResult:
+    def sync(
+        self, dry_run: bool = False, sync_deletions: bool = False, verbose: bool = False
+    ) -> SyncResult:
         result = SyncResult(synced=[], deleted=[], skipped=[], errors=[])
 
         # Discover all keys from both stores
+        _log("Listing source keys...", verbose)
         all_source_keys = self.source.list_all_keys()
+        _log(f"Found {len(all_source_keys)} keys in source", verbose)
+
+        _log("Listing target keys...", verbose)
         all_target_keys = self.target.list_all_keys()
+        _log(f"Found {len(all_target_keys)} keys in target", verbose)
 
         # Filter by pattern
+        _log("Filtering by patterns...", verbose)
         source_names = filter_keys_by_pattern(
             list(all_source_keys.keys()), self.patterns, self.case_sensitive
         )
         target_names = filter_keys_by_pattern(
             list(all_target_keys.keys()), self.patterns, self.case_sensitive
         )
+        _log(f"Matched {len(source_names)} source, {len(target_names)} target", verbose)
 
         # Union of all matching key names
         all_names = set(source_names) | set(target_names)
 
+        _log(f"Processing {len(all_names)} unique keys...", verbose)
         for name in sorted(all_names):
             src_val = all_source_keys.get(name)
             tgt_val = all_target_keys.get(name)

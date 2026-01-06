@@ -33,31 +33,47 @@ def sync(
     vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service name")] = "api-keys",
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Show progress messages")
+    ] = False,
 ):
     """Sync API keys between stores.
 
     Discovers keys by pattern matching (_TOKEN, _API, _KEY, _PASSWORD, _SECRET, _CREDENTIAL).
     """
     patterns = load_patterns(config)
-    op_store = OnePasswordStore(vault)
-    kc_store = KeychainStore(service)
+
+    if direction == SyncDirection.OP_TO_KEYCHAIN:
+        typer.echo("Syncing: 1Password → Keychain")
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        if verbose:
+            typer.echo("  → Connecting to Keychain...", err=True)
+        kc_store = KeychainStore(service)
+        engine = SyncEngine(op_store, kc_store, patterns, case_sensitive)
+    else:
+        typer.echo("Syncing: Keychain → 1Password")
+        if verbose:
+            typer.echo("  → Connecting to Keychain...", err=True)
+        kc_store = KeychainStore(service)
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        engine = SyncEngine(kc_store, op_store, patterns, case_sensitive)
 
     if unlock or kc_store.is_locked():
         if not kc_store.unlock():
             typer.echo("Failed to unlock keychain", err=True)
             raise typer.Exit(1)
 
-    if direction == SyncDirection.OP_TO_KEYCHAIN:
-        engine = SyncEngine(op_store, kc_store, patterns, case_sensitive)
-        typer.echo("Syncing: 1Password → Keychain")
-    else:
-        engine = SyncEngine(kc_store, op_store, patterns, case_sensitive)
-        typer.echo("Syncing: Keychain → 1Password")
-
     if dry_run:
         typer.echo("[DRY RUN]")
 
-    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions)
+    if verbose:
+        typer.echo("  → Fetching keys from source...", err=True)
+
+    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
 
     for name in result.synced:
         typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")
@@ -222,6 +238,9 @@ def chezmoi_sync(
         Path | None, typer.Option(help="Chezmoi secrets.json.age path")
     ] = None,
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
+    verbose: Annotated[
+        bool, typer.Option("--verbose", "-v", help="Show progress messages")
+    ] = False,
 ):
     """Sync API keys between 1Password and Chezmoi.
 
@@ -230,15 +249,25 @@ def chezmoi_sync(
       chezmoi-to-op: Sync from chezmoi secrets.json.age to 1Password
     """
     patterns = load_patterns(config)
-    op_store = OnePasswordStore(vault)
-    cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
 
     if direction == "op-to-chezmoi":
-        engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
         typer.echo("Syncing: 1Password → Chezmoi")
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        if verbose:
+            typer.echo("  → Loading chezmoi secrets...", err=True)
+        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+        engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
     elif direction == "chezmoi-to-op":
-        engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
         typer.echo("Syncing: Chezmoi → 1Password")
+        if verbose:
+            typer.echo("  → Loading chezmoi secrets...", err=True)
+        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
     else:
         typer.echo(f"Invalid direction: {direction}", err=True)
         typer.echo("Use: op-to-chezmoi or chezmoi-to-op", err=True)
@@ -247,7 +276,10 @@ def chezmoi_sync(
     if dry_run:
         typer.echo("[DRY RUN]")
 
-    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions)
+    if verbose:
+        typer.echo("  → Fetching keys from source...", err=True)
+
+    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
 
     for name in result.synced:
         typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")
