@@ -2,11 +2,11 @@ import typer
 from typing import Annotated
 from pathlib import Path
 
-from .backends import OnePasswordStore, KeychainStore
+from .backends import OnePasswordStore, KeychainStore, ChezmoiStore
 from .sync import SyncEngine, SyncDirection
 from .config import load_patterns, filter_keys_by_pattern
 
-app = typer.Typer(help="Sync API keys between 1Password and Apple Keychain")
+app = typer.Typer(help="Sync API keys between 1Password, Apple Keychain, and Chezmoi")
 
 
 @app.command()
@@ -191,6 +191,105 @@ def export_env(
         # Escape single quotes in value
         escaped = value.replace("'", "'\"'\"'")
         typer.echo(f"export {clean_name}='{escaped}'")
+
+
+@app.command("chezmoi-sync")
+def chezmoi_sync(
+    direction: Annotated[
+        str, typer.Argument(help="Direction: op-to-chezmoi or chezmoi-to-op")
+    ] = "op-to-chezmoi",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Preview without changes")
+    ] = False,
+    sync_deletions: Annotated[
+        bool, typer.Option("--sync-deletions", help="Delete missing keys")
+    ] = False,
+    case_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--case-sensitive/--no-case-sensitive",
+            help="Case sensitive pattern matching",
+        ),
+    ] = True,
+    name_style: Annotated[
+        str,
+        typer.Option(
+            help="Name style for chezmoi: upper, lower, or preserve"
+        ),
+    ] = "upper",
+    vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
+    secrets_file: Annotated[
+        Path | None, typer.Option(help="Chezmoi secrets.json.age path")
+    ] = None,
+    config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
+):
+    """Sync API keys between 1Password and Chezmoi.
+
+    Directions:
+      op-to-chezmoi: Sync from 1Password to chezmoi secrets.json.age
+      chezmoi-to-op: Sync from chezmoi secrets.json.age to 1Password
+    """
+    patterns = load_patterns(config)
+    op_store = OnePasswordStore(vault)
+    cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+
+    if direction == "op-to-chezmoi":
+        engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
+        typer.echo("Syncing: 1Password → Chezmoi")
+    elif direction == "chezmoi-to-op":
+        engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
+        typer.echo("Syncing: Chezmoi → 1Password")
+    else:
+        typer.echo(f"Invalid direction: {direction}", err=True)
+        typer.echo("Use: op-to-chezmoi or chezmoi-to-op", err=True)
+        raise typer.Exit(1)
+
+    if dry_run:
+        typer.echo("[DRY RUN]")
+
+    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions)
+
+    for name in result.synced:
+        typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")
+    for name in result.deleted:
+        typer.echo(f"  ✗ {'Would delete' if dry_run else 'Deleted'}: {name}")
+    for name in result.errors:
+        typer.echo(f"  ⚠ Error: {name}", err=True)
+
+    typer.echo(
+        f"\nSummary: {len(result.synced)} synced, {len(result.deleted)} deleted, {len(result.skipped)} unchanged"
+    )
+
+
+@app.command("chezmoi-list")
+def chezmoi_list(
+    case_sensitive: Annotated[
+        bool,
+        typer.Option(
+            "--case-sensitive/--no-case-sensitive",
+            help="Case sensitive pattern matching",
+        ),
+    ] = True,
+    name_style: Annotated[
+        str,
+        typer.Option(help="Name style: upper, lower, or preserve"),
+    ] = "preserve",
+    secrets_file: Annotated[
+        Path | None, typer.Option(help="Chezmoi secrets.json.age path")
+    ] = None,
+    config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
+):
+    """List all API keys in chezmoi secrets.json.age matching configured patterns."""
+    patterns = load_patterns(config)
+    store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+
+    all_keys = store.list_all_keys()
+    matching_names = filter_keys_by_pattern(
+        list(all_keys.keys()), patterns, case_sensitive
+    )
+
+    for name in sorted(matching_names):
+        typer.echo(f"✓ {name}")
 
 
 if __name__ == "__main__":

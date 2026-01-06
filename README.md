@@ -1,11 +1,13 @@
 # API Key Sync
 
-Sync API keys between 1Password and Apple Keychain with automatic pattern-based discovery.
+Sync API keys between 1Password, Apple Keychain, and Chezmoi with automatic pattern-based discovery.
 
 ## Features
 
 - **Automatic Discovery**: Finds keys matching patterns like `_API_KEY`, `_TOKEN`, `_SECRET`
-- **Bidirectional Sync**: Sync from 1Password → Keychain or Keychain → 1Password
+- **Multi-Backend Support**: Sync between 1Password, macOS Keychain, and Chezmoi
+- **Bidirectional Sync**: Sync in any direction between supported backends
+- **Name Style Conversion**: Automatic UPPER_CASE ↔ lower_case mapping for Chezmoi
 - **Case Sensitivity Control**: Match patterns case-sensitively or case-insensitively
 - **Dry Run Mode**: Preview changes before applying
 - **Export to Environment**: Generate shell export commands
@@ -16,9 +18,11 @@ Sync API keys between 1Password and Apple Keychain with automatic pattern-based 
 flowchart TB
     subgraph CLI["CLI (cli.py)"]
         sync[sync]
+        chezmoi_sync[chezmoi-sync]
         get[get]
         put[put]
         list[list]
+        chezmoi_list[chezmoi-list]
         export[export-env]
     end
 
@@ -30,11 +34,14 @@ flowchart TB
     subgraph Backends
         OP[OnePasswordStore]
         KC[KeychainStore]
+        CZ[ChezmoiStore]
     end
 
     subgraph External["External Systems"]
         OP_CLI["1Password CLI (op)"]
         SEC_CLI["macOS security CLI"]
+        CZ_CLI["chezmoi + age"]
+        CZ_FILE["secrets.json.age"]
     end
 
     CLI --> Engine
@@ -42,6 +49,8 @@ flowchart TB
     SE --> Backends
     OP --> OP_CLI
     KC --> SEC_CLI
+    CZ --> CZ_CLI
+    CZ_CLI --> CZ_FILE
 ```
 
 ## Sync Flow
@@ -74,6 +83,7 @@ sequenceDiagram
 
 - macOS (uses `security` CLI for Keychain access)
 - [1Password CLI](https://developer.1password.com/docs/cli/) (`op`) installed and authenticated
+- [Chezmoi](https://www.chezmoi.io/) with age encryption configured (for Chezmoi sync)
 - Python 3.11+
 - [uv](https://github.com/astral-sh/uv) package manager
 
@@ -127,6 +137,33 @@ api-key-sync sync --sync-deletions
 api-key-sync sync --no-case-sensitive
 ```
 
+### Sync with Chezmoi
+
+Sync keys between 1Password and Chezmoi's age-encrypted `secrets.json.age`:
+
+```bash
+# 1Password → Chezmoi (converts to UPPER_CASE by default)
+api-key-sync chezmoi-sync op-to-chezmoi
+
+# Chezmoi → 1Password
+api-key-sync chezmoi-sync chezmoi-to-op
+
+# Preview changes
+api-key-sync chezmoi-sync op-to-chezmoi --dry-run
+
+# Keep lowercase names (preserve original style)
+api-key-sync chezmoi-sync op-to-chezmoi --name-style preserve
+
+# List keys in chezmoi
+api-key-sync chezmoi-list
+api-key-sync chezmoi-list --no-case-sensitive
+```
+
+**Name Style Options:**
+- `upper`: Convert to UPPER_CASE (default, for 1Password compatibility)
+- `lower`: Convert to lower_case
+- `preserve`: Keep original case from source
+
 ### Get a Single Key
 
 ```bash
@@ -171,6 +208,8 @@ source <(api-key-sync export-env)
 |--------|-------------|---------|
 | `--vault` | 1Password vault name | `API_KEYS` |
 | `--service` | Keychain service name | `api-keys` |
+| `--secrets-file` | Chezmoi secrets.json.age path | `~/.local/share/chezmoi/secrets.json.age` |
+| `--name-style` | Name conversion: upper, lower, preserve | `upper` |
 | `--config` | Path to config file | `~/.dotfiles/.config/zsh/config.d/api_keys.zsh` |
 | `--dry-run` | Preview changes without executing | `false` |
 | `--sync-deletions` | Delete keys missing from source | `false` |
@@ -189,7 +228,8 @@ src/api_key_sync/
 └── backends/
     ├── __init__.py
     ├── onepassword.py # 1Password CLI wrapper
-    └── keychain.py    # macOS Keychain wrapper
+    ├── keychain.py    # macOS Keychain wrapper
+    └── chezmoi.py     # Chezmoi age-encrypted secrets wrapper
 ```
 
 ## Development
