@@ -232,7 +232,7 @@ def chezmoi_sync(
         typer.Option(
             help="Name style for chezmoi: upper, lower, or preserve"
         ),
-    ] = "upper",
+    ] = "preserve",
     vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
     secrets_file: Annotated[
         Path | None, typer.Option(help="Chezmoi secrets.json.age path")
