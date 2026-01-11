@@ -33,6 +33,13 @@ def sync(
     ] = True,
     vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
     service: Annotated[str, typer.Option(help="Keychain service name")] = "api-keys",
+    name_style: Annotated[
+        str,
+        typer.Option(help="Name style for chezmoi: upper, lower, or preserve"),
+    ] = "preserve",
+    secrets_file: Annotated[
+        Path | None, typer.Option(help="Chezmoi secrets.json.age path")
+    ] = None,
     config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
     verbose: Annotated[
         bool, typer.Option("--verbose", "-v", help="Show progress messages")
@@ -40,16 +47,23 @@ def sync(
 ):
     """Sync API keys between stores.
 
+    Directions:
+      op-to-keychain: 1Password → Keychain
+      keychain-to-op: Keychain → 1Password
+      op-to-chezmoi:  1Password → Chezmoi
+      chezmoi-to-op:  Chezmoi → 1Password
+
     Discovers keys by pattern matching (_TOKEN, _API, _KEY, _PASSWORD, _SECRET, _CREDENTIAL).
     """
     patterns = load_patterns(config)
+    kc_store = None
+    engine = None
 
     if direction == SyncDirection.OP_TO_KEYCHAIN:
         typer.echo("Syncing: 1Password → Keychain")
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
-        # Validate 1Password authentication before proceeding
         try:
             op_store.validate_auth()
         except OnePasswordError as e:
@@ -60,7 +74,8 @@ def sync(
             typer.echo("  → Connecting to Keychain...", err=True)
         kc_store = KeychainStore(service)
         engine = SyncEngine(op_store, kc_store, patterns, case_sensitive)
-    else:
+
+    elif direction == SyncDirection.KEYCHAIN_TO_OP:
         typer.echo("Syncing: Keychain → 1Password")
         if verbose:
             typer.echo("  → Connecting to Keychain...", err=True)
@@ -68,7 +83,6 @@ def sync(
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
-        # Validate 1Password authentication before proceeding
         try:
             op_store.validate_auth()
         except OnePasswordError as e:
@@ -78,7 +92,41 @@ def sync(
             typer.echo("  → 1Password authenticated ✓", err=True)
         engine = SyncEngine(kc_store, op_store, patterns, case_sensitive)
 
-    if unlock or kc_store.is_locked():
+    elif direction == SyncDirection.OP_TO_CHEZMOI:
+        typer.echo("Syncing: 1Password → Chezmoi")
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
+        if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
+            typer.echo("  → Loading chezmoi secrets...", err=True)
+        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+        engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
+
+    elif direction == SyncDirection.CHEZMOI_TO_OP:
+        typer.echo("Syncing: Chezmoi → 1Password")
+        if verbose:
+            typer.echo("  → Loading chezmoi secrets...", err=True)
+        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
+        if verbose:
+            typer.echo("  → Connecting to 1Password...", err=True)
+        op_store = OnePasswordStore(vault)
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
+        if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
+        engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
+
+    # Handle keychain unlock if needed
+    if kc_store is not None and (unlock or kc_store.is_locked()):
         if not kc_store.unlock():
             typer.echo("Failed to unlock keychain", err=True)
             raise typer.Exit(1)
@@ -227,109 +275,6 @@ def export_env(
         # Escape single quotes in value
         escaped = value.replace("'", "'\"'\"'")
         typer.echo(f"export {clean_name}='{escaped}'")
-
-
-@app.command("chezmoi-sync")
-def chezmoi_sync(
-    direction: Annotated[
-        str, typer.Argument(help="Direction: op-to-chezmoi or chezmoi-to-op")
-    ] = "op-to-chezmoi",
-    dry_run: Annotated[
-        bool, typer.Option("--dry-run", help="Preview without changes")
-    ] = False,
-    sync_deletions: Annotated[
-        bool, typer.Option("--sync-deletions", help="Delete missing keys")
-    ] = False,
-    case_sensitive: Annotated[
-        bool,
-        typer.Option(
-            "--case-sensitive/--no-case-sensitive",
-            help="Case sensitive pattern matching",
-        ),
-    ] = True,
-    name_style: Annotated[
-        str,
-        typer.Option(
-            help="Name style for chezmoi: upper, lower, or preserve"
-        ),
-    ] = "preserve",
-    vault: Annotated[str, typer.Option(help="1Password vault name")] = "API_KEYS",
-    secrets_file: Annotated[
-        Path | None, typer.Option(help="Chezmoi secrets.json.age path")
-    ] = None,
-    config: Annotated[Path | None, typer.Option(help="Path to config file")] = None,
-    verbose: Annotated[
-        bool, typer.Option("--verbose", "-v", help="Show progress messages")
-    ] = False,
-):
-    """Sync API keys between 1Password and Chezmoi.
-
-    Directions:
-      op-to-chezmoi: Sync from 1Password to chezmoi secrets.json.age
-      chezmoi-to-op: Sync from chezmoi secrets.json.age to 1Password
-    """
-    patterns = load_patterns(config)
-
-    if direction == "op-to-chezmoi":
-        typer.echo("Syncing: 1Password → Chezmoi")
-        if verbose:
-            typer.echo("  → Connecting to 1Password...", err=True)
-        op_store = OnePasswordStore(vault)
-        # Validate 1Password authentication before proceeding
-        try:
-            op_store.validate_auth()
-        except OnePasswordError as e:
-            typer.echo(f"✗ {e}", err=True)
-            raise typer.Exit(1)
-        if verbose:
-            typer.echo("  → 1Password authenticated ✓", err=True)
-            typer.echo("  → Loading chezmoi secrets...", err=True)
-        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
-        engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
-    elif direction == "chezmoi-to-op":
-        typer.echo("Syncing: Chezmoi → 1Password")
-        if verbose:
-            typer.echo("  → Loading chezmoi secrets...", err=True)
-        cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
-        if verbose:
-            typer.echo("  → Connecting to 1Password...", err=True)
-        op_store = OnePasswordStore(vault)
-        # Validate 1Password authentication before proceeding
-        try:
-            op_store.validate_auth()
-        except OnePasswordError as e:
-            typer.echo(f"✗ {e}", err=True)
-            raise typer.Exit(1)
-        if verbose:
-            typer.echo("  → 1Password authenticated ✓", err=True)
-        engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
-    else:
-        typer.echo(f"Invalid direction: {direction}", err=True)
-        typer.echo("Use: op-to-chezmoi or chezmoi-to-op", err=True)
-        raise typer.Exit(1)
-
-    if dry_run:
-        typer.echo("[DRY RUN]")
-
-    if verbose:
-        typer.echo("  → Fetching keys from source...", err=True)
-
-    try:
-        result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
-    except SyncSafetyError as e:
-        typer.echo(f"\n✗ {e}", err=True)
-        raise typer.Exit(1)
-
-    for name in result.synced:
-        typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")
-    for name in result.deleted:
-        typer.echo(f"  ✗ {'Would delete' if dry_run else 'Deleted'}: {name}")
-    for name in result.errors:
-        typer.echo(f"  ⚠ Error: {name}", err=True)
-
-    typer.echo(
-        f"\nSummary: {len(result.synced)} synced, {len(result.deleted)} deleted, {len(result.skipped)} unchanged"
-    )
 
 
 @app.command("chezmoi-list")

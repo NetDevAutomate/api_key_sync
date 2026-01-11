@@ -8,6 +8,8 @@ from .config import filter_keys_by_pattern, DEFAULT_PATTERNS
 class SyncDirection(Enum):
     OP_TO_KEYCHAIN = "op-to-keychain"
     KEYCHAIN_TO_OP = "keychain-to-op"
+    OP_TO_CHEZMOI = "op-to-chezmoi"
+    CHEZMOI_TO_OP = "chezmoi-to-op"
 
 
 class SyncSafetyError(Exception):

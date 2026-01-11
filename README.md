@@ -18,7 +18,6 @@ Sync API keys between 1Password, Apple Keychain, and Chezmoi with automatic patt
 flowchart TB
     subgraph CLI["CLI (cli.py)"]
         sync[sync]
-        chezmoi_sync[chezmoi-sync]
         get[get]
         put[put]
         list[list]
@@ -142,17 +141,17 @@ api-key-sync sync --no-case-sensitive
 Sync keys between 1Password and Chezmoi's age-encrypted `secrets.json.age`:
 
 ```bash
-# 1Password → Chezmoi (converts to UPPER_CASE by default)
-api-key-sync chezmoi-sync op-to-chezmoi
+# 1Password → Chezmoi (preserves case by default)
+api-key-sync sync op-to-chezmoi
 
 # Chezmoi → 1Password
-api-key-sync chezmoi-sync chezmoi-to-op
+api-key-sync sync chezmoi-to-op
 
 # Preview changes
-api-key-sync chezmoi-sync op-to-chezmoi --dry-run
+api-key-sync sync op-to-chezmoi --dry-run
 
-# Keep lowercase names (preserve original style)
-api-key-sync chezmoi-sync op-to-chezmoi --name-style preserve
+# Convert to UPPER_CASE
+api-key-sync sync op-to-chezmoi --name-style upper
 
 # List keys in chezmoi
 api-key-sync chezmoi-list
@@ -160,9 +159,9 @@ api-key-sync chezmoi-list --no-case-sensitive
 ```
 
 **Name Style Options:**
-- `upper`: Convert to UPPER_CASE (default, for 1Password compatibility)
+- `preserve`: Keep original case from source (default)
+- `upper`: Convert to UPPER_CASE
 - `lower`: Convert to lower_case
-- `preserve`: Keep original case from source
 
 ### Get a Single Key
 
@@ -209,7 +208,7 @@ source <(api-key-sync export-env)
 | `--vault` | 1Password vault name | `API_KEYS` |
 | `--service` | Keychain service name | `api-keys` |
 | `--secrets-file` | Chezmoi secrets.json.age path | `~/.local/share/chezmoi/secrets.json.age` |
-| `--name-style` | Name conversion: upper, lower, preserve | `upper` |
+| `--name-style` | Name conversion: preserve, upper, lower | `preserve` |
 | `--config` | Path to config file | `~/.dotfiles/.config/zsh/config.d/api_keys.zsh` |
 | `--dry-run` | Preview changes without executing | `false` |
 | `--sync-deletions` | Delete keys missing from source | `false` |

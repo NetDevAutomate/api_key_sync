@@ -60,14 +60,16 @@ class TestSyncEngine:
         assert result.synced == []
 
     def test_sync_deletion(self):
-        source = MockStore()
-        target = MockStore({"TEST_API_KEY": "orphan"})
+        # Source has one key, target has a different key that should be deleted
+        source = MockStore({"OTHER_API_KEY": "keep_me"})
+        target = MockStore({"TEST_API_KEY": "orphan", "OTHER_API_KEY": "keep_me"})
         engine = SyncEngine(source, target, patterns=["_API"])
 
         result = engine.sync(sync_deletions=True)
 
         assert result.deleted == ["TEST_API_KEY"]
         assert "TEST_API_KEY" not in target.data
+        assert "OTHER_API_KEY" in target.data  # Keep existing key from source
 
     def test_sync_no_deletion_by_default(self):
         source = MockStore()
