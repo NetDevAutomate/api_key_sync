@@ -3,9 +3,42 @@ import subprocess
 from ..models import APIKey
 
 
+class OnePasswordError(Exception):
+    """Raised when 1Password operations fail."""
+    pass
+
+
 class OnePasswordStore:
     def __init__(self, vault: str = "API_KEYS"):
         self.vault = vault
+
+    def is_authenticated(self) -> bool:
+        """Check if 1Password CLI is authenticated and working.
+
+        Returns:
+            True if op CLI is authenticated, False otherwise.
+        """
+        try:
+            result = subprocess.run(
+                ["op", "whoami"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            return result.returncode == 0
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def validate_auth(self) -> None:
+        """Validate 1Password authentication, raising if not authenticated.
+
+        Raises:
+            OnePasswordError: If not authenticated or op CLI unavailable.
+        """
+        if not self.is_authenticated():
+            raise OnePasswordError(
+                "1Password CLI is not authenticated. Run 'eval $(op signin)' or 'op_token' first."
+            )
 
     def _run(
         self, args: list[str], input_data: str | None = None

@@ -10,6 +10,11 @@ class SyncDirection(Enum):
     KEYCHAIN_TO_OP = "keychain-to-op"
 
 
+class SyncSafetyError(Exception):
+    """Raised when a sync operation would be dangerous."""
+    pass
+
+
 @dataclass
 class SyncResult:
     synced: list[str]
@@ -50,6 +55,14 @@ class SyncEngine:
         _log("Listing target keys...", verbose)
         all_target_keys = self.target.list_all_keys()
         _log(f"Found {len(all_target_keys)} keys in target", verbose)
+
+        # Safety check: refuse to delete all target keys if source returns 0
+        if sync_deletions and len(all_source_keys) == 0 and len(all_target_keys) > 0:
+            raise SyncSafetyError(
+                f"SAFETY: Source returned 0 keys but target has {len(all_target_keys)} keys. "
+                "This would delete all target keys. Check source authentication/connectivity. "
+                "If this is intentional, manually delete target keys first."
+            )
 
         # Filter by pattern
         _log("Filtering by patterns...", verbose)

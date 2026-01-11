@@ -3,7 +3,8 @@ from typing import Annotated
 from pathlib import Path
 
 from .backends import OnePasswordStore, KeychainStore, ChezmoiStore
-from .sync import SyncEngine, SyncDirection
+from .backends.onepassword import OnePasswordError
+from .sync import SyncEngine, SyncDirection, SyncSafetyError
 from .config import load_patterns, filter_keys_by_pattern
 
 app = typer.Typer(help="Sync API keys between 1Password, Apple Keychain, and Chezmoi")
@@ -48,7 +49,14 @@ def sync(
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
+        # Validate 1Password authentication before proceeding
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
         if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
             typer.echo("  → Connecting to Keychain...", err=True)
         kc_store = KeychainStore(service)
         engine = SyncEngine(op_store, kc_store, patterns, case_sensitive)
@@ -60,6 +68,14 @@ def sync(
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
+        # Validate 1Password authentication before proceeding
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
+        if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
         engine = SyncEngine(kc_store, op_store, patterns, case_sensitive)
 
     if unlock or kc_store.is_locked():
@@ -73,7 +89,11 @@ def sync(
     if verbose:
         typer.echo("  → Fetching keys from source...", err=True)
 
-    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
+    try:
+        result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
+    except SyncSafetyError as e:
+        typer.echo(f"\n✗ {e}", err=True)
+        raise typer.Exit(1)
 
     for name in result.synced:
         typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")
@@ -255,7 +275,14 @@ def chezmoi_sync(
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
+        # Validate 1Password authentication before proceeding
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
         if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
             typer.echo("  → Loading chezmoi secrets...", err=True)
         cz_store = ChezmoiStore(secrets_file=secrets_file, name_style=name_style)  # type: ignore
         engine = SyncEngine(op_store, cz_store, patterns, case_sensitive)
@@ -267,6 +294,14 @@ def chezmoi_sync(
         if verbose:
             typer.echo("  → Connecting to 1Password...", err=True)
         op_store = OnePasswordStore(vault)
+        # Validate 1Password authentication before proceeding
+        try:
+            op_store.validate_auth()
+        except OnePasswordError as e:
+            typer.echo(f"✗ {e}", err=True)
+            raise typer.Exit(1)
+        if verbose:
+            typer.echo("  → 1Password authenticated ✓", err=True)
         engine = SyncEngine(cz_store, op_store, patterns, case_sensitive)
     else:
         typer.echo(f"Invalid direction: {direction}", err=True)
@@ -279,7 +314,11 @@ def chezmoi_sync(
     if verbose:
         typer.echo("  → Fetching keys from source...", err=True)
 
-    result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
+    try:
+        result = engine.sync(dry_run=dry_run, sync_deletions=sync_deletions, verbose=verbose)
+    except SyncSafetyError as e:
+        typer.echo(f"\n✗ {e}", err=True)
+        raise typer.Exit(1)
 
     for name in result.synced:
         typer.echo(f"  ✓ {'Would sync' if dry_run else 'Synced'}: {name}")

@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-DEFAULT_CONFIG_PATH = Path.home() / ".dotfiles/.config/zsh/config.d/api_keys.zsh"
+DEFAULT_CONFIG_PATH = Path.home() / ".local/share/chezmoi/dot_config/zsh/config.d/api_keys.zsh"
 
 # Patterns to match API key names (underscore prefix for better specificity)
 DEFAULT_PATTERNS = [
